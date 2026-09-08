@@ -1,0 +1,109 @@
+@page "/dashboard"
+@rendermode InteractiveServer
+
+<PageTitle>Dashboard</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-6">
+
+    <MudText Typo="Typo.h4" Class="mb-4">
+        Trading Dashboard
+    </MudText>
+
+    <!-- TradingTools.Modules.Market.Domain Prices -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2">BTC / USDT</MudText>
+                <MudText Typo="Typo.h5">$@BtcPrice</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6">
+            <MudPaper Class="pa-4" Elevation="1">
+                <MudText Typo="Typo.subtitle2">ETH / USDT</MudText>
+                <MudText Typo="Typo.h5">$@EthPrice</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- BTC Indicators -->
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+
+        <MudText Typo="Typo.h6" Class="mb-3">
+            BTC Indicators
+        </MudText>
+
+        <MudGrid>
+            <MudItem xs="6" sm="4">
+                <MudText Typo="Typo.caption">200 Week MA</MudText>
+                <MudText Typo="Typo.h6">$@Btc200WeekMa</MudText>
+            </MudItem>
+
+            <MudItem xs="6" sm="4">
+                <MudText Typo="Typo.caption">200 EMA</MudText>
+                <MudText Typo="Typo.h6">$@Btc200Ema</MudText>
+            </MudItem>
+
+            <MudItem xs="6" sm="4">
+                <MudText Typo="Typo.caption">RSI</MudText>
+                <MudText Typo="Typo.h6">@BtcRsi</MudText>
+            </MudItem>
+        </MudGrid>
+
+    </MudPaper>
+
+    <!-- AI Agent -->
+    <MudPaper Class="pa-4" Elevation="1">
+
+        <MudText Typo="Typo.h6" Class="mb-3">
+            AI Agent
+        </MudText>
+
+        <MudTextField @bind-Value="AgentPrompt"
+                      Label="Instruction"
+                      Placeholder="Place a DCA order every Friday when BTC is below the 200 week MA..."
+                      Variant="Variant.Outlined"
+                      Lines="4"
+                      FullWidth="true" />
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Class="mt-3"
+                   OnClick="RunAgent">
+            Run
+        </MudButton>
+
+        @if (!string.IsNullOrWhiteSpace(AgentReply))
+        {
+            <MudPaper Class="pa-4 mt-4" Outlined="true">
+                <MudText Typo="Typo.subtitle2" Class="mb-2">
+                    Agent Response
+                </MudText>
+
+                <MudText>
+                    @AgentReply
+                </MudText>
+            </MudPaper>
+        }
+
+    </MudPaper>
+
+</MudContainer>
+
+@code {
+    private decimal BtcPrice = 108_500m;
+    private decimal EthPrice = 4_350m;
+
+    private decimal Btc200WeekMa = 52_000m;
+    private decimal Btc200Ema = 92_500m;
+    private decimal BtcRsi = 54.3m;
+
+    private string AgentPrompt = string.Empty;
+    private string AgentReply = string.Empty;
+
+    private void RunAgent()
+    {
+        // Placeholder until the agent backend is connected.
+        AgentReply = "Agent response will appear here.";
+    }
+}

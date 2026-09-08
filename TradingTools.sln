@@ -1,0 +1,27 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TradingTools.WebApp", "src\Apps\TradingTools.WebApp\TradingTools.WebApp.csproj", "{DEEE423F-90D0-44F3-936F-ECAA1BD0DA2D}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Infrastructure", "Infrastructure", "{5D2B6921-99CB-4386-B653-C928592168CB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Binance", "src\Infrastructure\Binance\Binance.csproj", "{DC2EBC28-CD71-4B6E-8C5B-87CE0F7D91EC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{DEEE423F-90D0-44F3-936F-ECAA1BD0DA2D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DEEE423F-90D0-44F3-936F-ECAA1BD0DA2D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DEEE423F-90D0-44F3-936F-ECAA1BD0DA2D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DEEE423F-90D0-44F3-936F-ECAA1BD0DA2D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DC2EBC28-CD71-4B6E-8C5B-87CE0F7D91EC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DC2EBC28-CD71-4B6E-8C5B-87CE0F7D91EC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DC2EBC28-CD71-4B6E-8C5B-87CE0F7D91EC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DC2EBC28-CD71-4B6E-8C5B-87CE0F7D91EC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{DC2EBC28-CD71-4B6E-8C5B-87CE0F7D91EC} = {5D2B6921-99CB-4386-B653-C928592168CB}
+	EndGlobalSection
+EndGlobal
