@@ -1,98 +1,245 @@
 @page "/dashboard"
 @rendermode InteractiveServer
+@using TradingTools.Assistant.Application
+@using TradingTools.Assistant.Application.Queries.AskAssistant
+@using TradingTools.MarketData.Application.Queries.GetDashboardPrices
+@implements IDisposable
+@inject GetDashboardPricesQueryHandler GetDashboardPrices
+@inject AskAssistantQueryHandler AskAssistant
+@inject ILogger<Dashboard> Logger
 
 <PageTitle>Dashboard</PageTitle>
 
-<MudContainer MaxWidth="MaxWidth.Large" Class="mt-6">
+<MudContainer MaxWidth="MaxWidth.Large" Class="py-4 py-md-6 px-0">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-5" Wrap="Wrap.Wrap">
+        <div>
+            <MudText Typo="Typo.h4" HtmlTag="h1" Class="mb-1">Trading dashboard</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Your markets, insights and next steps.</MudText>
+        </div>
+        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.Science">Binance Spot Testnet</MudChip>
+    </MudStack>
 
-    <MudText Typo="Typo.h4" Class="mb-4">
-        Trading Dashboard
-    </MudText>
+    @if (IsLoading)
+    {
+        <div role="status" class="mb-4">
+            <MudText>Loading prices...</MudText>
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        </div>
+    }
+    else if (PriceError is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-4">@PriceError</MudAlert>
+    }
 
-    <!-- TradingTools.Modules.Market.Domain Prices -->
-    <MudGrid Class="mb-4">
+    <!-- Market prices -->
+    <MudGrid Spacing="3" Class="mb-5">
         <MudItem xs="12" sm="6">
-            <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.subtitle2">BTC / USDT</MudText>
-                <MudText Typo="Typo.h5">$@BtcPrice</MudText>
-            </MudPaper>
+            <MudCard Outlined="true" Elevation="0" Class="rounded-lg">
+                <MudCardContent Class="pa-5">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.CurrencyBitcoin" Color="Color.Primary" />
+                            <MudText Typo="Typo.subtitle2">Bitcoin</MudText>
+                        </MudStack>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">BTC / USDT</MudText>
+                    </MudStack>
+                    <MudText Typo="Typo.h4" Class="mt-3">@(Prices?.BtcPrice.ToString("N2") ?? "—")</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">USDT · Testnet price</MudText>
+                </MudCardContent>
+            </MudCard>
         </MudItem>
-
         <MudItem xs="12" sm="6">
-            <MudPaper Class="pa-4" Elevation="1">
-                <MudText Typo="Typo.subtitle2">ETH / USDT</MudText>
-                <MudText Typo="Typo.h5">$@EthPrice</MudText>
-            </MudPaper>
+            <MudCard Outlined="true" Elevation="0" Class="rounded-lg">
+                <MudCardContent Class="pa-5">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Outlined.Token" Color="Color.Primary" />
+                            <MudText Typo="Typo.subtitle2">Ethereum</MudText>
+                        </MudStack>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">ETH / USDT</MudText>
+                    </MudStack>
+                    <MudText Typo="Typo.h4" Class="mt-3">@(Prices?.EthPrice.ToString("N2") ?? "—")</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">USDT · Testnet price</MudText>
+                </MudCardContent>
+            </MudCard>
         </MudItem>
     </MudGrid>
 
-    <!-- BTC Indicators -->
-    <MudPaper Class="pa-4 mb-4" Elevation="1">
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="8">
+            <MudStack Spacing="3">
+                <MudCard Outlined="true" Elevation="0" Class="rounded-lg">
+                    <MudCardContent Class="pa-5 pa-md-6">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Class="mb-2">
+                            <MudIcon Icon="@Icons.Material.Outlined.AutoAwesome" Color="Color.Primary" />
+                            <MudText Typo="Typo.h6" HtmlTag="h2">AI assistant</MudText>
+                            <MudSpacer />
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Analysis</MudChip>
+                        </MudStack>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-5">
+                            Turn a market question into a clear next step.
+                        </MudText>
 
-        <MudText Typo="Typo.h6" Class="mb-3">
-            BTC Indicators
-        </MudText>
+                        <MudTextField @bind-Value="AgentPrompt"
+                                      Label="Your instruction"
+                                      Placeholder="Review BTC momentum and outline a weekly DCA plan..."
+                                      Variant="Variant.Outlined"
+                                      Lines="4"
+                                      Disabled="IsAskingAssistant"
+                                      FullWidth="true" />
 
-        <MudGrid>
-            <MudItem xs="6" sm="4">
-                <MudText Typo="Typo.caption">200 Week MA</MudText>
-                <MudText Typo="Typo.h6">$@Btc200WeekMa</MudText>
-            </MudItem>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Wrap="Wrap.Wrap" Class="mt-3 mb-5">
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Analysis only · No orders are submitted</MudText>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                       Disabled="IsAskingAssistant"
+                                       StartIcon="@Icons.Material.Outlined.AutoAwesome" OnClick="RunAgentAsync">
+                                @(IsAskingAssistant ? "Thinking..." : "Run")
+                            </MudButton>
+                        </MudStack>
 
-            <MudItem xs="6" sm="4">
-                <MudText Typo="Typo.caption">200 EMA</MudText>
-                <MudText Typo="Typo.h6">$@Btc200Ema</MudText>
-            </MudItem>
+                        <MudPaper Outlined="true" Elevation="0" Class="pa-4 rounded-lg mud-theme-background">
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">Assistant response</MudText>
+                            <div aria-live="polite">
+                                @if (IsAskingAssistant)
+                                {
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">Preparing your response...</MudText>
+                                    <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-2" />
+                                }
+                                else if (AgentError is not null)
+                                {
+                                    <MudAlert Severity="Severity.Warning" Dense="true">@AgentError</MudAlert>
+                                }
+                                else if (string.IsNullOrWhiteSpace(AgentReply))
+                                {
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">Your analysis will appear here.</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Enter an instruction above to start.</MudText>
+                                }
+                                else
+                                {
+                                    @foreach (var paragraph in AgentReply.Split("\n\n", StringSplitOptions.RemoveEmptyEntries))
+                                    {
+                                        <MudText Typo="Typo.body2" Class="mb-2">@paragraph</MudText>
+                                    }
+                                }
+                            </div>
+                        </MudPaper>
+                    </MudCardContent>
+                </MudCard>
 
-            <MudItem xs="6" sm="4">
-                <MudText Typo="Typo.caption">RSI</MudText>
-                <MudText Typo="Typo.h6">@BtcRsi</MudText>
-            </MudItem>
-        </MudGrid>
+                <MudCard Outlined="true" Elevation="0" Class="rounded-lg">
+                    <MudCardContent Class="pa-5">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+                            <MudText Typo="Typo.h6" HtmlTag="h2">Recent AI actions</MudText>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Sample</MudChip>
+                        </MudStack>
+                        <MudStack Spacing="3">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                                <MudIcon Icon="@Icons.Material.Outlined.QueryStats" Color="Color.Primary" Size="Size.Small" />
+                                <div class="flex-grow-1">
+                                    <MudText Typo="Typo.subtitle2">BTC market review</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Momentum and moving averages reviewed</MudText>
+                                </div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">09:42</MudText>
+                            </MudStack>
+                            <MudDivider />
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                                <MudIcon Icon="@Icons.Material.Outlined.EditNote" Color="Color.Primary" Size="Size.Small" />
+                                <div class="flex-grow-1">
+                                    <MudText Typo="Typo.subtitle2">Weekly DCA plan</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Draft prepared for review</MudText>
+                                </div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">09:30</MudText>
+                            </MudStack>
+                            <MudDivider />
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                                <MudIcon Icon="@Icons.Material.Outlined.PieChart" Color="Color.Primary" Size="Size.Small" />
+                                <div class="flex-grow-1">
+                                    <MudText Typo="Typo.subtitle2">Allocation check</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Portfolio balance summarized</MudText>
+                                </div>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">09:15</MudText>
+                            </MudStack>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudStack>
+        </MudItem>
 
-    </MudPaper>
+        <MudItem xs="12" md="4">
+            <MudStack Spacing="3">
+                <MudCard Outlined="true" Elevation="0" Class="rounded-lg">
+                    <MudCardContent Class="pa-5">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+                            <MudText Typo="Typo.h6" HtmlTag="h2">Portfolio</MudText>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Sample</MudChip>
+                        </MudStack>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Total value · USDT</MudText>
+                        <MudText Typo="Typo.h4" Class="mb-1">24,580.00</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Illustrative portfolio allocation</MudText>
+                        <MudDivider Class="my-4" />
+                        <MudStack Spacing="3">
+                            <div>
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-1">
+                                    <MudText Typo="Typo.body2">Bitcoin</MudText>
+                                    <MudText Typo="Typo.body2">55%</MudText>
+                                </MudStack>
+                                <MudProgressLinear Value="55" Color="Color.Primary" Rounded="true" aria-label="Sample Bitcoin allocation: 55 percent" />
+                            </div>
+                            <div>
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-1">
+                                    <MudText Typo="Typo.body2">Ethereum</MudText>
+                                    <MudText Typo="Typo.body2">30%</MudText>
+                                </MudStack>
+                                <MudProgressLinear Value="30" Color="Color.Info" Rounded="true" aria-label="Sample Ethereum allocation: 30 percent" />
+                            </div>
+                            <div>
+                                <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-1">
+                                    <MudText Typo="Typo.body2">USDT</MudText>
+                                    <MudText Typo="Typo.body2">15%</MudText>
+                                </MudStack>
+                                <MudProgressLinear Value="15" Color="Color.Secondary" Rounded="true" aria-label="Sample USDT allocation: 15 percent" />
+                            </div>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
 
-    <!-- AI Agent -->
-    <MudPaper Class="pa-4" Elevation="1">
-
-        <MudText Typo="Typo.h6" Class="mb-3">
-            AI Agent
-        </MudText>
-
-        <MudTextField @bind-Value="AgentPrompt"
-                      Label="Instruction"
-                      Placeholder="Place a DCA order every Friday when BTC is below the 200 week MA..."
-                      Variant="Variant.Outlined"
-                      Lines="4"
-                      FullWidth="true" />
-
-        <MudButton Variant="Variant.Filled"
-                   Color="Color.Primary"
-                   Class="mt-3"
-                   OnClick="RunAgent">
-            Run
-        </MudButton>
-
-        @if (!string.IsNullOrWhiteSpace(AgentReply))
-        {
-            <MudPaper Class="pa-4 mt-4" Outlined="true">
-                <MudText Typo="Typo.subtitle2" Class="mb-2">
-                    Agent Response
-                </MudText>
-
-                <MudText>
-                    @AgentReply
-                </MudText>
-            </MudPaper>
-        }
-
-    </MudPaper>
-
+                <MudCard Outlined="true" Elevation="0" Class="rounded-lg">
+                    <MudCardContent Class="pa-5">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-1">
+                            <MudText Typo="Typo.h6" HtmlTag="h2">Market indicators</MudText>
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Sample</MudChip>
+                        </MudStack>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Bitcoin · Reference levels</MudText>
+                        <MudStack Spacing="3" Class="mt-4">
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">200 week MA</MudText>
+                                <MudText Typo="Typo.subtitle2">@Btc200WeekMa.ToString("N0") USDT</MudText>
+                            </MudStack>
+                            <MudDivider />
+                            <MudStack Row="true" Justify="Justify.SpaceBetween">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">200 EMA</MudText>
+                                <MudText Typo="Typo.subtitle2">@Btc200Ema.ToString("N0") USDT</MudText>
+                            </MudStack>
+                            <MudDivider />
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">RSI</MudText>
+                                <MudText Typo="Typo.subtitle2">@BtcRsi · Neutral</MudText>
+                            </MudStack>
+                        </MudStack>
+                    </MudCardContent>
+                </MudCard>
+            </MudStack>
+        </MudItem>
+    </MudGrid>
 </MudContainer>
 
 @code {
-    private decimal BtcPrice = 108_500m;
-    private decimal EthPrice = 4_350m;
+    private readonly CancellationTokenSource PriceLoadCancellation = new();
+    private readonly CancellationTokenSource AssistantCancellation = new();
+    private DashboardPrices? Prices;
+    private bool IsLoading = true;
+    private bool IsDisposed;
+    private string? PriceError;
 
     private decimal Btc200WeekMa = 52_000m;
     private decimal Btc200Ema = 92_500m;
@@ -100,10 +247,89 @@
 
     private string AgentPrompt = string.Empty;
     private string AgentReply = string.Empty;
+    private string? AgentError;
+    private bool IsAskingAssistant;
 
-    private void RunAgent()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Placeholder until the agent backend is connected.
-        AgentReply = "Agent response will appear here.";
+        // Interactive rendering happens once after prerendering, avoiding duplicate price queries.
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            Prices = await GetDashboardPrices.HandleAsync(PriceLoadCancellation.Token);
+        }
+        catch (OperationCanceledException) when (IsDisposed)
+        {
+            // Navigating away cancels the request without showing an error.
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to load dashboard prices.");
+            PriceError = "Unable to load prices. Please reload the page to try again.";
+        }
+        finally
+        {
+            IsLoading = false;
+            if (!IsDisposed)
+            {
+                StateHasChanged();
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        IsDisposed = true;
+        PriceLoadCancellation.Cancel();
+        PriceLoadCancellation.Dispose();
+        AssistantCancellation.Cancel();
+        AssistantCancellation.Dispose();
+    }
+
+    private async Task RunAgentAsync()
+    {
+        if (IsAskingAssistant || IsDisposed)
+        {
+            return;
+        }
+
+        AgentError = null;
+        if (string.IsNullOrWhiteSpace(AgentPrompt))
+        {
+            AgentError = "Enter an instruction first.";
+            return;
+        }
+
+        IsAskingAssistant = true;
+        AgentReply = string.Empty;
+        try
+        {
+            AgentReply = await AskAssistant.HandleAsync(AgentPrompt, AssistantCancellation.Token);
+        }
+        catch (AssistantNotConfiguredException)
+        {
+            AgentError = "The AI assistant is not configured yet.";
+        }
+        catch (OperationCanceledException) when (IsDisposed)
+        {
+            // Navigating away cancels the request without showing an error.
+        }
+        catch (OperationCanceledException)
+        {
+            AgentError = "The assistant took too long to respond. Please try again.";
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to get an assistant response.");
+            AgentError = "Unable to get a response. Please try again.";
+        }
+        finally
+        {
+            IsAskingAssistant = false;
+        }
     }
 }

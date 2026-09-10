@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace TradingTools.Infrastructure.Binance;
 
 public sealed class BinanceOptions

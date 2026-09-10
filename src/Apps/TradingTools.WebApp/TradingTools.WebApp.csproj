@@ -4,12 +4,20 @@
         <TargetFramework>net10.0</TargetFramework>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
+        <AssemblyName>TradingTools.WebApp</AssemblyName>
+        <RootNamespace>TradingTools.WebApp</RootNamespace>
         <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
     </PropertyGroup>
 
 
     <ItemGroup>
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
         <PackageReference Include="MudBlazor" Version="9.*"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../Modules/Assistant/Assistant.csproj" />
+        <ProjectReference Include="../../Infrastructure/Claude/Claude.csproj" />
+        <ProjectReference Include="../../Modules/MarketData/MarketData.csproj" />
+        <ProjectReference Include="../../Infrastructure/Binance/Binance.csproj" />
     </ItemGroup>
 </Project>

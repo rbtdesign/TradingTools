@@ -1,7 +1,16 @@
 using MudBlazor.Services;
+using TradingTools.Assistant.Application.Queries.AskAssistant;
+using TradingTools.Infrastructure.Claude.IoC;
+using TradingTools.MarketData.Application.Queries.GetDashboardPrices;
+using TradingTools.Infrastructure.Binance.IoC;
 using TradingTools.WebApp.Components;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddScoped<GetDashboardPricesQueryHandler>();
+builder.Services.RegisterBinanceApi(builder.Configuration);
+builder.Services.AddScoped<AskAssistantQueryHandler>();
+builder.Services.RegisterClaudeApi(builder.Configuration);
 
 // Add MudBlazor services
 builder.Services.AddMudServices();
