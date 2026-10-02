@@ -1,0 +1,142 @@
+@page "/strategy-evaluator"
+@rendermode InteractiveServer
+@using System.Text
+@using System.Text.RegularExpressions
+@using TradingTools.Assistant.Application
+@using TradingTools.Assistant.Application.Queries.AskAssistant
+@using TradingTools.StrategyEvaluation.Application.Commands.RunStrategy
+@using TradingTools.StrategyEvaluation.Application.Queries
+@using TradingTools.StrategyEvaluation.Domain
+@implements IDisposable
+@inject RunStrategyCommandHandler RunStrategy
+@inject GetRunHistoryQueryHandler GetHistory
+@inject CompareRunsQueryHandler CompareRuns
+@inject AskAssistantQueryHandler AskAssistant
+@inject ILogger<StrategyEvaluator> Logger
+
+<PageTitle>Strategy evaluator</PageTitle>
+<MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="py-4 py-md-6 px-0">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-5" Wrap="Wrap.Wrap">
+        <div><MudText Typo="Typo.h4" HtmlTag="h1">Strategy evaluator</MudText><MudText Color="Color.Secondary">Reproducible historical simulations · simulated money only</MudText></div>
+        <MudChip T="string" Variant="Variant.Outlined" Icon="@Icons.Material.Outlined.History">Completed UTC daily candles</MudChip>
+    </MudStack>
+
+    @if (Error is not null) { <MudAlert Severity="Severity.Error" Class="mb-4">@Error</MudAlert> }
+    @if (Status is not null) { <MudAlert Severity="Severity.Info" Class="mb-4">@Status</MudAlert> }
+
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="4">
+            <MudCard Outlined="true"><MudCardContent Class="pa-5">
+                <MudText Typo="Typo.h6" Class="mb-4">Configure a run</MudText>
+                <MudStack Spacing="3">
+                    <MudSelect T="string" Label="Asset" Variant="Variant.Outlined" @bind-Value="Asset"><MudSelectItem Value='"BTCUSDT"'>BTC / USDT</MudSelectItem><MudSelectItem Value='"ETHUSDT"'>ETH / USDT</MudSelectItem></MudSelect>
+                    <MudDatePicker Label="Start date (UTC)" Variant="Variant.Outlined" @bind-Date="StartDate" MaxDate="LatestCompleted" />
+                    <MudDatePicker Label="End date (UTC)" Variant="Variant.Outlined" @bind-Date="EndDate" MaxDate="LatestCompleted" />
+                    <MudNumericField T="decimal" Label="Starting capital (USDT)" Variant="Variant.Outlined" Min="0.01m" @bind-Value="StartingCapital" />
+                    <MudSelect T="StrategyKind" Label="Strategy" Variant="Variant.Outlined" @bind-Value="Strategy"><MudSelectItem Value="StrategyKind.MovingAverageCrossover">SMA crossover</MudSelectItem><MudSelectItem Value="StrategyKind.WeeklyDca">Weekly DCA</MudSelectItem></MudSelect>
+                    @if (Strategy == StrategyKind.MovingAverageCrossover)
+                    {
+                        <MudNumericField T="int" Label="Fast SMA days" Variant="Variant.Outlined" Min="1" @bind-Value="FastPeriod" />
+                        <MudNumericField T="int" Label="Slow SMA days" Variant="Variant.Outlined" Min="2" @bind-Value="SlowPeriod" />
+                    }
+                    else
+                    {
+                        <MudNumericField T="decimal" Label="Weekly cash debit (USDT)" Variant="Variant.Outlined" Min="0.01m" @bind-Value="WeeklyAmount" />
+                        <MudSelect T="DayOfWeek" Label="Purchase weekday (UTC)" Variant="Variant.Outlined" @bind-Value="Weekday">@foreach (var day in Enum.GetValues<DayOfWeek>()) { <MudSelectItem Value="day">@day</MudSelectItem> }</MudSelect>
+                    }
+                    <MudNumericField T="decimal" Label="Trading fee (%)" Variant="Variant.Outlined" Min="0m" @bind-Value="FeePercent" />
+                    <MudNumericField T="decimal" Label="Adverse slippage (%)" Variant="Variant.Outlined" Min="0m" @bind-Value="SlippagePercent" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="Busy" OnClick="RunAsync" StartIcon="@Icons.Material.Outlined.PlayArrow">@(Busy ? "Working..." : "Prepare and run")</MudButton>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Downloaded candles are cached. A run is saved only after complete validation and simulation.</MudText>
+                </MudStack>
+            </MudCardContent></MudCard>
+        </MudItem>
+
+        <MudItem xs="12" md="8">
+            @if (Current is null)
+            {
+                <MudAlert Severity="Severity.Normal">Configure a strategy or reopen a saved run. The report does not require AI.</MudAlert>
+            }
+            else
+            {
+                <MudCard Outlined="true" Class="mb-3"><MudCardContent Class="pa-5">
+                    <MudStack Row="true" Wrap="Wrap.Wrap" AlignItems="AlignItems.Center"><div><MudText Typo="Typo.h6">@StrategyName(Current.Settings.Strategy) · @DisplayAsset(Current.Settings.Asset)</MudText><MudText Typo="Typo.caption" Color="Color.Secondary">@Current.Settings.StartDate.ToString("d") – @Current.Settings.EndDate.ToString("d") · run @Current.Id.ToString()[..8]</MudText></div><MudSpacer/><MudChip T="string" Color="Color.Success">Completed</MudChip></MudStack>
+                    <MudDivider Class="my-4"/>
+                    <MudGrid Spacing="2">
+                        @Metric("Final value", Current.StrategyResult.Metrics.FinalValue, "N2", " USDT")
+                        @Metric("Net P/L", Current.StrategyResult.Metrics.NetProfitLoss, "N2", " USDT")
+                        @Metric("Total return", Current.StrategyResult.Metrics.TotalReturnPercent, "N2", "%")
+                        @Metric("Maximum drawdown", Current.StrategyResult.Metrics.MaximumDrawdownPercent, "N2", "%")
+                    </MudGrid>
+                    <MudText Typo="Typo.body2" Class="mt-3">@Current.StrategyResult.Summary</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Drawdown: @(Current.StrategyResult.Metrics.DrawdownPeakDate?.ToString("d") ?? "—") to @(Current.StrategyResult.Metrics.DrawdownTroughDate?.ToString("d") ?? "—") · Fees @Current.StrategyResult.Metrics.TotalFees.ToString("N4") USDT · Slippage assumption @Current.Settings.SlippagePercent.ToString("N3")%</MudText>
+                </MudCardContent></MudCard>
+
+                <MudCard Outlined="true" Class="mb-3"><MudCardContent Class="pa-5">
+                    <MudText Typo="Typo.h6" Class="mb-3">Strategy vs buy-and-hold</MudText>
+                    <MudChart ChartType="ChartType.Line" ChartSeries="@EquitySeries(Current)" XAxisLabels="@EquityLabels(Current)"
+                              Width="100%" Height="280px" Class="mb-4" />
+                    <MudSimpleTable Dense="true" Hover="true"><thead><tr><th>Measure</th><th>Strategy</th><th>Buy-and-hold</th></tr></thead><tbody>
+                        <tr><td>Final value</td><td>@Money(Current.StrategyResult.Metrics.FinalValue)</td><td>@Money(Current.BenchmarkResult.Metrics.FinalValue)</td></tr>
+                        <tr><td>Total return</td><td>@Percent(Current.StrategyResult.Metrics.TotalReturnPercent)</td><td>@Percent(Current.BenchmarkResult.Metrics.TotalReturnPercent)</td></tr>
+                        <tr><td>Maximum drawdown</td><td>@Percent(Current.StrategyResult.Metrics.MaximumDrawdownPercent)</td><td>@Percent(Current.BenchmarkResult.Metrics.MaximumDrawdownPercent)</td></tr>
+                        <tr><td>Return difference</td><td colspan="2">@Percent(Current.StrategyResult.Metrics.TotalReturnPercent - Current.BenchmarkResult.Metrics.TotalReturnPercent) percentage points</td></tr>
+                    </tbody></MudSimpleTable>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Final composition: @Money(Current.StrategyResult.Metrics.FinalCash) cash + @Current.StrategyResult.Metrics.FinalUnits.ToString("N8") units worth @Money(Current.StrategyResult.Metrics.FinalUnitsValue). Buys @Current.StrategyResult.Metrics.PurchaseCount; sells @Current.StrategyResult.Metrics.SaleCount; completed round trips @Current.StrategyResult.Metrics.CompletedRoundTrips.</MudText>
+                </MudCardContent></MudCard>
+
+                <MudCard Outlined="true" Class="mb-3"><MudCardContent Class="pa-5">
+                    <MudText Typo="Typo.h6" Class="mb-3">Transaction history</MudText>
+                    @if (Current.StrategyResult.Transactions.Count == 0) { <MudText Color="Color.Secondary">No transactions. @Current.StrategyResult.Summary</MudText> }
+                    else { <MudSimpleTable Dense="true"><thead><tr><th>Date UTC</th><th>Side</th><th>Quantity</th><th>Fill</th><th>Notional</th><th>Fee</th><th>Reason / realised P&amp;L</th></tr></thead><tbody>@foreach (var tx in Current.StrategyResult.Transactions) { <tr><td>@tx.Date</td><td>@tx.Side</td><td>@tx.Quantity.ToString("N8")</td><td>@Money(tx.FillPrice)</td><td>@Money(tx.Notional)</td><td>@Money(tx.Fee)</td><td>@tx.Reason @if (tx.RealizedProfitLoss is not null) { <span> · @Money(tx.RealizedProfitLoss.Value)</span> }</td></tr> }</tbody></MudSimpleTable> }
+                </MudCardContent></MudCard>
+
+                <MudCard Outlined="true"><MudCardContent Class="pa-5">
+                    <MudText Typo="Typo.h6">Optional AI review</MudText><MudText Typo="Typo.caption" Color="Color.Secondary">AI commentary is separate from this immutable numerical report and never runs automatically.</MudText>
+                    <MudTextField @bind-Value="AiQuestion" Label="Follow-up or supported variation" Variant="Variant.Outlined" Lines="2" Class="my-3" Placeholder="Review this run, or: Repeat this run with 50/200 averages" />
+                    <MudStack Row="true" Wrap="Wrap.Wrap"><MudButton Variant="Variant.Filled" Disabled="AiBusy" OnClick="ReviewAsync">Review with AI</MudButton><MudButton Variant="Variant.Outlined" Disabled="AiBusy" OnClick="RunVariationAsync">Run requested variation</MudButton></MudStack>
+                    @if (AiError is not null) { <MudAlert Severity="Severity.Warning" Class="mt-3">@AiError</MudAlert> }
+                    @if (!string.IsNullOrWhiteSpace(AiReply)) { <MudPaper Outlined="true" Class="pa-4 mt-3"><MudText Style="white-space: pre-wrap">@AiReply</MudText></MudPaper> }
+                </MudCardContent></MudCard>
+            }
+        </MudItem>
+    </MudGrid>
+
+    <MudCard Outlined="true" Class="mt-4"><MudCardContent Class="pa-5"><MudText Typo="Typo.h6" Class="mb-3">Saved run history and comparison</MudText>
+        @if (History.Count == 0) { <MudText Color="Color.Secondary">No completed runs saved yet.</MudText> }
+        else { <MudSimpleTable Dense="true" Hover="true"><thead><tr><th>Compare</th><th>Created UTC</th><th>Run</th><th>Period</th><th>Result</th><th></th></tr></thead><tbody>@foreach (var run in History) { <tr><td><MudCheckBox T="bool" Value="@SelectedIds.Contains(run.Id)" ValueChanged="@(v => ToggleCompare(run.Id, v))" /></td><td>@run.CreatedAtUtc.ToString("u")</td><td>@DisplayAsset(run.Settings.Asset) · @StrategyName(run.Settings.Strategy) · @SettingsSummary(run.Settings)</td><td>@run.Settings.StartDate – @run.Settings.EndDate</td><td>@Percent(run.StrategyResult.Metrics.TotalReturnPercent)</td><td><MudButton Size="Size.Small" OnClick="@(() => Open(run))">Open</MudButton></td></tr> }</tbody></MudSimpleTable>
+            <MudButton Variant="Variant.Outlined" Class="mt-3" Disabled="@(SelectedIds.Count != 2)" OnClick="CompareAsync">Compare selected runs</MudButton> }
+        @if (Comparison is not null) { <MudAlert Severity="@(Comparison.ConditionsMatch ? Severity.Success : Severity.Warning)" Class="mt-3">@(Comparison.ConditionsMatch ? "Like-for-like conditions: one shared benchmark applies." : "Conditions differ; this is not a like-for-like comparison and benchmarks remain distinct.")</MudAlert>
+            @if (Comparison.Differences.Count > 0) { <MudList T="string" Dense="true">@foreach (var d in Comparison.Differences) { <MudListItem T="string">@d.Field: @d.First vs @d.Second</MudListItem> }</MudList> }
+            <MudSimpleTable Dense="true"><thead><tr><th></th><th>@StrategyName(Comparison.First.Settings.Strategy)</th><th>@StrategyName(Comparison.Second.Settings.Strategy)</th></tr></thead><tbody><tr><td>Return</td><td>@Percent(Comparison.First.StrategyResult.Metrics.TotalReturnPercent)</td><td>@Percent(Comparison.Second.StrategyResult.Metrics.TotalReturnPercent)</td></tr><tr><td>Drawdown</td><td>@Percent(Comparison.First.StrategyResult.Metrics.MaximumDrawdownPercent)</td><td>@Percent(Comparison.Second.StrategyResult.Metrics.MaximumDrawdownPercent)</td></tr></tbody></MudSimpleTable> }
+    </MudCardContent></MudCard>
+</MudContainer>
+
+@code {
+    private readonly CancellationTokenSource Cancellation = new(); private DateTime? LatestCompleted = DateTime.UtcNow.Date.AddDays(-1);
+    private string Asset = "BTCUSDT"; private DateTime? StartDate = DateTime.UtcNow.Date.AddYears(-1); private DateTime? EndDate = DateTime.UtcNow.Date.AddDays(-1);
+    private decimal StartingCapital = 10_000m, WeeklyAmount = 250m, FeePercent = 0.1m, SlippagePercent = 0.05m; private int FastPeriod = 20, SlowPeriod = 50;
+    private StrategyKind Strategy = StrategyKind.MovingAverageCrossover; private DayOfWeek Weekday = DayOfWeek.Monday;
+    private bool Busy, AiBusy; private string? Error, Status, AiError; private string AiQuestion = "Review this result against buy-and-hold.", AiReply = string.Empty;
+    private StrategyRun? Current; private IReadOnlyList<StrategyRun> History = []; private readonly HashSet<Guid> SelectedIds = []; private RunComparison? Comparison;
+    protected override async Task OnAfterRenderAsync(bool firstRender) { if (firstRender) { await RefreshHistoryAsync(); StateHasChanged(); } }
+    private StrategySettings Settings() => new(Asset, DateOnly.FromDateTime(StartDate ?? DateTime.MinValue), DateOnly.FromDateTime(EndDate ?? DateTime.MinValue), StartingCapital, Strategy, FastPeriod, SlowPeriod, WeeklyAmount, Weekday, FeePercent, SlippagePercent);
+    private async Task RunAsync() { if (Busy) return; Busy = true; Error = null; Status = "Preparing and validating historical data…"; try { Status = "Running strategy and benchmark…"; Current = await RunStrategy.HandleAsync(Settings(), Cancellation.Token); await RefreshHistoryAsync(); Status = "Completed and saved."; } catch (Exception ex) { Logger.LogError(ex, "Strategy run failed."); Error = ex.Message; Status = null; } finally { Busy = false; } }
+    private async Task RefreshHistoryAsync() => History = await GetHistory.HandleAsync(Cancellation.Token);
+    private void Open(StrategyRun run) { Current = run; Status = "Opened saved report without recalculating it."; AiReply = string.Empty; AiError = null; }
+    private void ToggleCompare(Guid id, bool value) { if (value) { if (SelectedIds.Count < 2) SelectedIds.Add(id); } else SelectedIds.Remove(id); }
+    private async Task CompareAsync() { try { Comparison = await CompareRuns.HandleAsync(SelectedIds.First(), SelectedIds.Last(), Cancellation.Token); } catch (Exception ex) { Error = ex.Message; } }
+    private async Task ReviewAsync() { if (Current is null || AiBusy) return; AiBusy = true; AiError = null; AiReply = string.Empty; try { AiReply = await AskAssistant.HandleAsync(BuildEvidencePrompt(Current, AiQuestion), Cancellation.Token); } catch (AssistantNotConfiguredException) { AiError = "The AI assistant is not configured. The numerical report remains fully available."; } catch (Exception ex) { Logger.LogError(ex, "AI review failed."); AiError = "AI review failed. The completed report is unchanged; you can retry."; } finally { AiBusy = false; } }
+    private async Task RunVariationAsync() { if (Current is null || Busy) return; var source = Current.Settings; try { var requested = ParseVariation(source, AiQuestion); Asset = requested.Asset; StartDate = requested.StartDate.ToDateTime(TimeOnly.MinValue); EndDate = requested.EndDate.ToDateTime(TimeOnly.MinValue); StartingCapital = requested.StartingCapital; Strategy = requested.Strategy; FastPeriod = requested.FastSmaPeriod; SlowPeriod = requested.SlowSmaPeriod; WeeklyAmount = requested.WeeklyPurchaseAmount; Weekday = requested.PurchaseWeekday; FeePercent = requested.TradingFeePercent; SlippagePercent = requested.SlippagePercent; await RunAsync(); } catch (Exception ex) { AiError = ex.Message; } }
+    private static StrategySettings ParseVariation(StrategySettings source, string request) { var sma = Regex.Match(request, @"(?<fast>\d+)\s*/\s*(?<slow>\d+)"); if (sma.Success) return source with { Strategy = StrategyKind.MovingAverageCrossover, FastSmaPeriod = int.Parse(sma.Groups["fast"].Value), SlowSmaPeriod = int.Parse(sma.Groups["slow"].Value) }; var dca = Regex.Match(request, @"(?i)(?<amount>\d+(?:\.\d+)?)\s*(?:USDT)?.*?\b(?<day>Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b"); if (request.Contains("DCA", StringComparison.OrdinalIgnoreCase) && dca.Success && Enum.TryParse<DayOfWeek>(dca.Groups["day"].Value, true, out var day)) return source with { Strategy = StrategyKind.WeeklyDca, WeeklyPurchaseAmount = decimal.Parse(dca.Groups["amount"].Value, System.Globalization.CultureInfo.InvariantCulture), PurchaseWeekday = day }; throw new ArgumentException("Specify a supported variation explicitly, for example ‘50/200 averages’ or ‘100 USDT DCA every Monday’. No run was started."); }
+    private static string BuildEvidencePrompt(StrategyRun r, string question) => $"You are reviewing immutable historical simulation run {r.Id}. Answer only from these application-calculated facts, distinguish facts from possible explanations, and do not imply future profitability. Question: {question}\nAsset {r.Settings.Asset}; UTC period {r.Settings.StartDate} to {r.Settings.EndDate}; strategy {r.Settings.Strategy}; starting capital {r.Settings.StartingCapital}; fee {r.Settings.TradingFeePercent}%; slippage {r.Settings.SlippagePercent}%; strategy final {r.StrategyResult.Metrics.FinalValue}, return {r.StrategyResult.Metrics.TotalReturnPercent}%, drawdown {r.StrategyResult.Metrics.MaximumDrawdownPercent}% ({r.StrategyResult.Metrics.DrawdownPeakDate} to {r.StrategyResult.Metrics.DrawdownTroughDate}), buys {r.StrategyResult.Metrics.PurchaseCount}, sells {r.StrategyResult.Metrics.SaleCount}, fees {r.StrategyResult.Metrics.TotalFees}; benchmark final {r.BenchmarkResult.Metrics.FinalValue}, return {r.BenchmarkResult.Metrics.TotalReturnPercent}%, drawdown {r.BenchmarkResult.Metrics.MaximumDrawdownPercent}%. Summary: {r.StrategyResult.Summary}.";
+    private static RenderFragment Metric(string label, decimal value, string format, string suffix) => builder => { builder.OpenElement(0, "div"); builder.AddAttribute(1, "class", "mud-grid-item mud-grid-item-xs-6 mud-grid-item-sm-3"); builder.OpenElement(2, "div"); builder.AddContent(3, label); builder.CloseElement(); builder.OpenElement(4, "strong"); builder.AddContent(5, value.ToString(format) + suffix); builder.CloseElement(); builder.CloseElement(); };
+    private static string Money(decimal x) => $"{x:N2} USDT"; private static string Percent(decimal x) => $"{x:N2}%"; private static string DisplayAsset(string x) => x.Replace("USDT", "/USDT");
+    private static List<ChartSeries> EquitySeries(StrategyRun run) => [
+        new() { Name = "Strategy", Data = run.StrategyResult.Equity.Select(x => (double)x.Value).ToArray() },
+        new() { Name = "Buy-and-hold", Data = run.BenchmarkResult.Equity.Select(x => (double)x.Value).ToArray() }];
+    private static string[] EquityLabels(StrategyRun run) => run.StrategyResult.Equity.Select(x => x.Date.ToString("yyyy-MM-dd")).ToArray();
+    private static string StrategyName(StrategyKind x) => x == StrategyKind.MovingAverageCrossover ? "SMA crossover" : "Weekly DCA";
+    private static string SettingsSummary(StrategySettings x) => x.Strategy == StrategyKind.MovingAverageCrossover ? $"{x.FastSmaPeriod}/{x.SlowSmaPeriod}" : $"{x.WeeklyPurchaseAmount:N2} {x.PurchaseWeekday}";
+    public void Dispose() { Cancellation.Cancel(); Cancellation.Dispose(); }
+}

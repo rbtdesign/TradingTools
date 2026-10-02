@@ -15,6 +15,7 @@
 
     <ItemGroup>
         <ProjectReference Include="../../Modules/MarketData/MarketData.csproj" />
+    <ProjectReference Include="../../Modules/StrategyEvaluation/StrategyEvaluation.csproj" />
     </ItemGroup>
 
 </Project>
