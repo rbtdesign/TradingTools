@@ -16,6 +16,8 @@
 
     <ItemGroup>
         <ProjectReference Include="../../Modules/Assistant/Assistant.csproj" />
+        <ProjectReference Include="../../Modules/StrategyEvaluation/StrategyEvaluation.csproj" />
+        <ProjectReference Include="../../Infrastructure/FileStorage/FileStorage.csproj" />
         <ProjectReference Include="../../Infrastructure/Claude/Claude.csproj" />
         <ProjectReference Include="../../Modules/MarketData/MarketData.csproj" />
         <ProjectReference Include="../../Infrastructure/Binance/Binance.csproj" />

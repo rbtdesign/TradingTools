@@ -130,3 +130,87 @@ Open `/dashboard` at the address printed by the host.
 
 References: [Binance Spot Testnet REST API](https://developers.binance.com/en/docs/products/spot/testnet/rest-api#symbol-price-ticker)
 and [Blazor component lifecycle](https://learn.microsoft.com/en-us/aspnet/core/blazor/components/lifecycle?view=aspnetcore-10.0#after-component-render-onafterrenderasync).
+
+## Strategy Evaluation module
+
+`StrategyEvaluation` owns the immutable run configuration/results and all deterministic
+accounting. Its application layer exposes direct command/query handlers and the
+provider-owned `IHistoricalDataProvider` and `IStrategyRunStore` ports. It does not
+reference Web or Infrastructure. Binance implements completed daily candle retrieval;
+FileStorage implements immutable JSON reports. The Blazor `/strategy-evaluator` page
+calls those handlers directly and separates data/simulation failures from optional AI
+failures.
+
+A run first validates its inputs, requests the inclusive evaluation range plus exactly
+`slow SMA period` preceding daily candles for crossover warm-up, and validates every
+required calendar day before calculating anything. Binance fills only absent cache
+ranges, paginates its `1d` kline endpoint, rejects malformed OHLC data, and atomically
+updates a provider-neutral cache under the user's local application-data directory.
+No partial run is saved. Completed reports are written once as individual JSON files in
+that directory's `TradingTools/runs` folder and reopened without data retrieval or
+recalculation. This file storage is deliberately small and personal; concurrent users,
+database migrations, retention, and an administration UI remain outside version one.
+
+Each report stores SHA-256 identities over canonical UTC date/OHLC values for both the
+complete calculation input (including warm-up) and the shared evaluation range, plus calculation
+version `1.0.0`. Later cache updates cannot rewrite an old report. Comparisons treat asset,
+period, capital, costs, data identity, and calculation version as fairness conditions.
+Only an exact match gets a shared benchmark label; strategy parameters are allowed to
+differ. The report retains its own benchmark either way.
+
+### Calculation conventions
+
+The product working conventions are implemented as follows:
+
+- UTC daily candles and weekdays are used; start/end dates are inclusive and the current
+  UTC day is rejected as incomplete.
+- An upward crossover is previous fast `<=` previous slow and current fast `>` current
+  slow. A downward crossover is previous fast `>=` previous slow and current fast `<`
+  current slow. Signals use closing prices and execute at the following day's open; a
+  last-day signal cannot execute. The strategy deliberately starts in cash and does not
+  infer an entry from its initial SMA state.
+- DCA executes at the selected UTC weekday's open. Its configured amount is the maximum
+  total cash debit including the fee, with the final debit reduced to available cash.
+  No contribution is introduced.
+- Buy slippage raises the reference open and sell slippage lowers it. Percentage fees
+  apply to filled notional. Fractional units are rounded down to 12 decimal places and
+  the resulting residual cash is retained; cash and holdings are never rounded negative.
+  Exchange lot sizes and minimum notionals are intentionally outside this model.
+- Equity contains opening capital and each evaluation day's close value. Final holdings
+  are marked at the final close without a forced sale. Maximum drawdown is the greatest
+  peak-to-trough percentage decline in that sampled series, with its dates retained.
+- Crossover sells retain net realised P/L against entry notional plus entry fee. An open
+  position is identified separately. DCA purchases remain accumulated/unrealised and
+  are never described as winning trades or completed round trips.
+
+The benchmark receives an independent copy of the same starting pot and buys at the first
+evaluation open with the same fee/slippage. Both results expose cash, units, unit value,
+fees, purchase/sale/round-trip counts, return, and drawdown, allowing the report and AI
+prompt to use application-calculated facts only.
+
+### AI boundary and variation requests
+
+AI review remains explicit and uses the existing provider-neutral `IAssistantProvider`.
+The Web page builds a bounded evidence prompt containing the selected run ID and computed
+metrics. Commentary is neither stored in nor allowed to mutate the report. Missing Claude
+credentials or provider failure affect only the review panel.
+
+Variation execution is local and deterministic rather than AI-generated code. The page
+accepts only the supported explicit forms (`50/200 averages`, or an amount and weekday
+for weekly DCA), copies all other source settings, validates normally, and creates a new
+immutable run. An incomplete request is rejected before retrieval. General strategy
+creation, optimisation loops, and order execution remain excluded.
+
+### Workflow and operational limits
+
+The UI reports preparing, running, completed, and failed states. Default dates cover one
+year, and Binance pagination supports longer daily ranges, but this personal application
+serialises cache writes and report writes to keep file consistency simple. There is no
+background job, polling, live monitoring, or API order path. The existing dashboard still
+loads BTC/USDT and ETH/USDT testnet prices once per visit. Historical simulations also use
+the configured Binance REST base URL and simulated funds only.
+
+Deterministic tests use known daily prices to cover fixed-pot DCA cash exhaustion, next-open
+crossover timing/final-period boundaries, fee/slippage accounting, non-negative residual
+cash, benchmark costs, and blocking missing candles. Provider HTTP and Claude calls are
+not integration-tested without explicit authorisation.
